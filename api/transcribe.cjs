@@ -37,16 +37,10 @@ module.exports = async function handler(req, res) {
 
   try {
     const audio = await parseAudioFile(req);
-
-    // 1) Transcribe with Whisper
     const stream = fs.createReadStream(audio.filepath);
-    const tr = await openai.audio.transcriptions.create({
-      file: stream,
-      model: "whisper-1"
-    });
+    const tr = await openai.audio.transcriptions.create({ file: stream, model: "whisper-1" });
     const text = (tr?.text || "").trim();
 
-    // 2) Auto-tags
     const tagPrompt = `Extract 3–7 concise hashtags that capture mood, themes, and activities from the journal entry.
 
 Rules:
@@ -84,9 +78,7 @@ ${text}
           .filter(t => /^#[a-z0-9_-]{2,30}$/.test(t))
           .slice(0, 10);
       }
-    } catch {
-      tags = [];
-    }
+    } catch { tags = []; }
 
     return res.status(200).json({ text, tags });
   } catch (err) {
