@@ -1,35 +1,28 @@
-// api/transcribe.ts
+// api/transcribe.ts  (ESM)
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import formidable, { File as FormidableFile } from "formidable";
 import fs from "fs";
 import OpenAI from "openai";
 
-/**
- * Vercel API config:
- * - Disable Next.js body parser so we can handle multipart form-data with formidable.
- */
 export const config = {
-  api: {
-    bodyParser: false,
-  },
+  api: { bodyParser: false }, // required for formidable
 };
 
-// ---- CORS helpers (so browser builds can POST here) ----
+// CORS (for web builds)
 function setCors(res: VercelResponse) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 }
 
-/**
- * Parse multipart/form-data and return the "audio" file.
- * Works for both single file objects and arrays (some formidable versions use arrays).
- */
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+// Parse multipart form and normalize files.audio to a single file
 function parseAudioFile(req: VercelRequest): Promise<FormidableFile> {
   return new Promise((resolve, reject) => {
     const form = formidable({
       multiples: false,
-      maxFileSize: 50 * 1024 * 1024, // 50MB cap (tweak as needed)
+      maxFileSize: 50 * 1024 * 1024,
       keepExtensions: true,
     });
 
@@ -37,46 +30,33 @@ function parseAudioFile(req: VercelRequest): Promise<FormidableFile> {
       if (err) return reject(err);
       const f: any = (files as any).audio;
       const audio: FormidableFile | undefined = Array.isArray(f) ? f[0] : f;
-      if (!audio) return reject(new Error("Missing file field 'audio'."));
+      if (!audio) return reject(new Error("Missing 'audio' file field"));
       resolve(audio);
     });
   });
 }
 
-// ---- OpenAI client ----
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   setCors(res);
-
-  if (req.method === "OPTIONS") {
-    return res.status(204).end();
-  }
-
-  if (req.method !== "POST") {
-    return res.status(405).json({ message: "Method not allowed" });
-  }
+  if (req.method === "OPTIONS") return res.status(204).end();
+  if (req.method !== "POST") return res.status(405).json({ message: "Method not allowed" });
 
   if (!process.env.OPENAI_API_KEY) {
     return res.status(500).json({ message: "Server misconfigured: OPENAI_API_KEY not set" });
   }
 
   try {
-    // 1) Parse the uploaded audio
     const audio = await parseAudioFile(req);
 
-    // 2) Transcribe with Whisper
+    // 1) Transcribe with Whisper
     const stream = fs.createReadStream(audio.filepath);
-    const transcription: any = await openai.audio.transcriptions.create({
+    const tr: any = await openai.audio.transcriptions.create({
       file: stream as any,
       model: "whisper-1",
     });
+    const text = (tr?.text || "").trim();
 
-    const text = (transcription?.text || "").trim();
-
-    // 3) Generate hashtags with GPT
+    // 2) Auto-tags with GPT
     const tagPrompt = `Extract 3–7 concise hashtags that capture mood, themes, and activities from the journal entry.
 
 Rules:
@@ -115,7 +95,6 @@ ${text}
           .slice(0, 10);
       }
     } catch {
-      // If parsing fails, just return an empty array; transcript is still valuable
       tags = [];
     }
 
