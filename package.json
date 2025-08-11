@@ -1,12 +1,11 @@
 {
-  "name": "vida-ai-server",
-  "version": "1.0.0",
-  "type": "module",
-  "engines": {
-    "node": ">=18"
-  },
-  "dependencies": {
-    "formidable": "^3.5.1",
-    "openai": "^4.52.0"
+    "name": "vida-ai-server",
+    "version": "1.0.0",
+    "type": "module",
+    "engines": { "node": ">=18" },
+    "dependencies": {
+      "formidable": "^3.5.1",
+      "openai": "^4.52.0"
+    }
   }
-}
+  

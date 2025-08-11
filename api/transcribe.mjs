@@ -1,10 +1,12 @@
-// api/transcribe.cjs
-const formidable = require("formidable");
-const fs = require("fs");
-const OpenAI = require("openai");
+// api/transcribe.mjs
+import formidable from "formidable";
+import fs from "fs";
+import OpenAI from "openai";
 
-exports.config = { api: { bodyParser: false } };
+/** Disable Next.js body parser so formidable can handle multipart */
+export const config = { api: { bodyParser: false } };
 
+// CORS for web builds
 function setCors(res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -26,7 +28,7 @@ function parseAudioFile(req) {
   });
 }
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   setCors(res);
   if (req.method === "OPTIONS") return res.status(204).end();
   if (req.method !== "POST") return res.status(405).json({ message: "Method not allowed" });
@@ -37,10 +39,13 @@ module.exports = async function handler(req, res) {
 
   try {
     const audio = await parseAudioFile(req);
+
+    // 1) Transcribe with Whisper
     const stream = fs.createReadStream(audio.filepath);
     const tr = await openai.audio.transcriptions.create({ file: stream, model: "whisper-1" });
     const text = (tr?.text || "").trim();
 
+    // 2) Hashtags with GPT
     const tagPrompt = `Extract 3–7 concise hashtags that capture mood, themes, and activities from the journal entry.
 
 Rules:
@@ -78,11 +83,13 @@ ${text}
           .filter(t => /^#[a-z0-9_-]{2,30}$/.test(t))
           .slice(0, 10);
       }
-    } catch { tags = []; }
+    } catch {
+      tags = [];
+    }
 
     return res.status(200).json({ text, tags });
   } catch (err) {
     console.error("[/api/transcribe] error:", err?.message || err);
     return res.status(500).json({ message: err?.message || "transcription failed" });
   }
-};
+}
